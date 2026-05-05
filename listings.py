@@ -154,12 +154,11 @@ print("\n--- Week 4 Cleaning ---")
 print("Rows before cleaning:", len(listed_cleaned))
 print("Columns before cleaning:", len(listed_cleaned.columns))
 
-# Convert important date columns to datetime
-# These dates are used for timeline analysis and mortgage rate matching
 date_columns = [
     "ListingContractDate",
     "PurchaseContractDate",
-    "CloseDate"
+    "CloseDate",
+    "ContractStatusChangeDate"
 ]
 
 for col in date_columns:
@@ -171,7 +170,6 @@ for col in date_columns:
 
 print("\nDate columns converted")
 
-# Convert important numeric columns to numeric values
 numeric_columns = [
     "ListPrice",
     "OriginalListPrice",
@@ -179,6 +177,8 @@ numeric_columns = [
     "DaysOnMarket",
     "BedroomsTotal",
     "BathroomsTotalInteger",
+    "Latitude",
+    "Longitude",
     "rate_30yr_fixed"
 ]
 
@@ -191,8 +191,6 @@ for col in numeric_columns:
 
 print("Numeric columns converted")
 
-# Remove rows with values that are clearly invalid
-# Example: negative days on market or zero list price
 rows_before_invalid = len(listed_cleaned)
 
 if "ListPrice" in listed_cleaned.columns:
@@ -214,8 +212,6 @@ print("\nRows before invalid value removal:", rows_before_invalid)
 print("Rows after invalid value removal:", len(listed_cleaned))
 print("Rows removed:", rows_before_invalid - len(listed_cleaned))
 
-# Remove rows missing fields required for analysis
-# Listings need a list price, listing date, and living area to be useful
 rows_before_missing = len(listed_cleaned)
 
 required_columns = [
@@ -234,8 +230,6 @@ print("\nRows before missing required value removal:", rows_before_missing)
 print("Rows after missing required value removal:", len(listed_cleaned))
 print("Rows removed:", rows_before_missing - len(listed_cleaned))
 
-# Fill missing bedroom and bathroom values with the median
-# These are useful fields, so filling missing values helps keep rows
 for col in ["BedroomsTotal", "BathroomsTotalInteger"]:
     if col in listed_cleaned.columns:
         missing_before = listed_cleaned[col].isnull().sum()
@@ -245,9 +239,6 @@ for col in ["BedroomsTotal", "BathroomsTotalInteger"]:
         print(f"\n{col} missing values filled:", missing_before)
         print(f"{col} median used:", median_value)
 
-# Remove unnecessary or redundant columns
-# year_month was created only for the mortgage rate merge in Week 3
-# It is a helper column and is not needed in the final cleaned dataset
 if "year_month" in listed_cleaned.columns:
     listed_cleaned = listed_cleaned.drop(columns=["year_month"])
 
@@ -255,6 +246,75 @@ print("\nRemoved unnecessary helper columns")
 
 print("\nRows after Week 4 cleaning:", len(listed_cleaned))
 print("Columns after Week 4 cleaning:", len(listed_cleaned.columns))
+
+
+# ============================================================
+# Week 5: Date Consistency and Geographic Data Checks
+# ============================================================
+
+print("\n--- Week 5 Date and Geographic Checks ---")
+
+if "ListingContractDate" in listed_cleaned.columns and "CloseDate" in listed_cleaned.columns:
+    listed_cleaned["listing_after_close_flag"] = (
+        listed_cleaned["ListingContractDate"] > listed_cleaned["CloseDate"]
+    )
+
+if "PurchaseContractDate" in listed_cleaned.columns and "CloseDate" in listed_cleaned.columns:
+    listed_cleaned["purchase_after_close_flag"] = (
+        listed_cleaned["PurchaseContractDate"] > listed_cleaned["CloseDate"]
+    )
+
+if "ListingContractDate" in listed_cleaned.columns and "PurchaseContractDate" in listed_cleaned.columns:
+    listed_cleaned["negative_timeline_flag"] = (
+        listed_cleaned["ListingContractDate"] > listed_cleaned["PurchaseContractDate"]
+    )
+
+if "Latitude" in listed_cleaned.columns and "Longitude" in listed_cleaned.columns:
+    listed_cleaned["missing_coordinates_flag"] = (
+        listed_cleaned["Latitude"].isnull() | listed_cleaned["Longitude"].isnull()
+    )
+
+    listed_cleaned["zero_coordinates_flag"] = (
+        (listed_cleaned["Latitude"] == 0) | (listed_cleaned["Longitude"] == 0)
+    )
+
+    listed_cleaned["positive_longitude_flag"] = (
+        listed_cleaned["Longitude"] > 0
+    )
+
+    listed_cleaned["implausible_coordinates_flag"] = (
+        (listed_cleaned["Latitude"] < 32) |
+        (listed_cleaned["Latitude"] > 42) |
+        (listed_cleaned["Longitude"] < -125) |
+        (listed_cleaned["Longitude"] > -114)
+    )
+
+flag_columns = [
+    "listing_after_close_flag",
+    "purchase_after_close_flag",
+    "negative_timeline_flag",
+    "missing_coordinates_flag",
+    "zero_coordinates_flag",
+    "positive_longitude_flag",
+    "implausible_coordinates_flag"
+]
+
+existing_flag_columns = [
+    col for col in flag_columns if col in listed_cleaned.columns
+]
+
+print("\nWeek 5 Flag Counts:")
+for col in existing_flag_columns:
+    print(f"{col}: {listed_cleaned[col].sum()}")
+
+flag_summary = pd.DataFrame({
+    "FlagColumn": existing_flag_columns,
+    "FlaggedRows": [listed_cleaned[col].sum() for col in existing_flag_columns]
+})
+
+flag_summary.to_csv("listed_week5_flag_summary.csv", index=False)
+
+print("\nSaved listed_week5_flag_summary.csv")
 
 
 # ============================================================

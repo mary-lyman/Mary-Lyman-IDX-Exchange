@@ -1,0 +1,22 @@
+
+# Ignore data files
+*.csv
+*.xlsx
+
+# Ignore Tableau files
+*.twb
+*.twbx
+*.twbr
+
+# Ignore documents
+*.docx
+
+# Ignore videos
+*.mp4
+*.mov
+
+# Ignore folders
+Training Videos/
+
+# System files
+.DS_Store
