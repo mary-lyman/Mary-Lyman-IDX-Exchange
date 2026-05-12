@@ -173,6 +173,7 @@ print("\nDate columns converted")
 numeric_columns = [
     "ListPrice",
     "OriginalListPrice",
+    "ClosePrice",
     "LivingArea",
     "DaysOnMarket",
     "BedroomsTotal",
@@ -190,6 +191,114 @@ for col in numeric_columns:
         )
 
 print("Numeric columns converted")
+
+
+# ============================================================
+# Remove unnecessary and redundant columns
+# ============================================================
+
+cols_to_drop = [
+
+    # Duplicate columns
+    "PropertyType.1",
+    "DaysOnMarket.1",
+    "LivingArea.1",
+    "Longitude.1",
+    "Latitude.1",
+    "ListPrice.1",
+    "CloseDate.1",
+    "BuyerOfficeName.1",
+    "UnparsedAddress.1",
+
+    # Agent/person fields
+    "ListAgentEmail",
+    "ListAgentFirstName",
+    "ListAgentLastName",
+    "ListAgentFullName",
+    "CoListAgentFirstName",
+    "CoListAgentLastName",
+    "BuyerAgentFirstName",
+    "BuyerAgentLastName",
+    "BuyerAgentMlsId",
+    "CoBuyerAgentFirstName",
+
+    # Compensation fields
+    "BuyerAgencyCompensation",
+    "BuyerAgencyCompensationType",
+
+    # Redundant identifiers
+    "ListingKeyNumeric",
+    "ListingId",
+    "StreetNumberNumeric",
+
+    # Extremely sparse or low-value fields
+    "BuilderName",
+    "BusinessType",
+    "BelowGradeFinishedArea",
+    "AboveGradeFinishedArea",
+    "TaxAnnualAmount",
+    "TaxYear",
+    "CoveredSpaces",
+    "LotSizeDimensions",
+
+    # Helper column from mortgage merge
+    "year_month"
+]
+
+cols_to_drop = [
+    col for col in cols_to_drop
+    if col in listed_cleaned.columns
+]
+
+print("\nColumns before unnecessary/redundant column removal:",
+      len(listed_cleaned.columns))
+
+listed_cleaned = listed_cleaned.drop(columns=cols_to_drop)
+
+print("Columns after unnecessary/redundant column removal:",
+      len(listed_cleaned.columns))
+
+print("Columns removed:",
+      len(cols_to_drop))
+
+print("\nDropped columns:")
+print(cols_to_drop)
+
+
+# ============================================================
+# Remove remaining columns with more than 90% missing values
+# ============================================================
+
+missing_percent_cleaned = (
+    listed_cleaned.isnull().mean() * 100
+)
+
+high_missing_cols = missing_percent_cleaned[
+    missing_percent_cleaned > 90
+].index.tolist()
+
+high_missing_cols = [
+    col for col in high_missing_cols
+    if col in listed_cleaned.columns
+]
+
+print("\nColumns before high-missing column removal:",
+      len(listed_cleaned.columns))
+
+listed_cleaned = listed_cleaned.drop(
+    columns=high_missing_cols
+)
+
+print("\nDropped high-missing columns (>90% missing):")
+print(high_missing_cols)
+
+print("Columns after high-missing column removal:",
+      len(listed_cleaned.columns))
+
+
+# ============================================================
+# Remove invalid numeric values
+# ============================================================
 
 rows_before_invalid = len(listed_cleaned)
 
@@ -238,11 +347,6 @@ for col in ["BedroomsTotal", "BathroomsTotalInteger"]:
 
         print(f"\n{col} missing values filled:", missing_before)
         print(f"{col} median used:", median_value)
-
-if "year_month" in listed_cleaned.columns:
-    listed_cleaned = listed_cleaned.drop(columns=["year_month"])
-
-print("\nRemoved unnecessary helper columns")
 
 print("\nRows after Week 4 cleaning:", len(listed_cleaned))
 print("Columns after Week 4 cleaning:", len(listed_cleaned.columns))
@@ -318,6 +422,118 @@ print("\nSaved listed_week5_flag_summary.csv")
 
 
 # ============================================================
+# Week 6: Feature Engineering and Market Metrics
+# ============================================================
+
+print("\n--- Week 6 Feature Engineering ---")
+
+# Listing datasets may not have ClosePrice for every row because not every
+# listing is closed. These metrics will only calculate when the needed data exists.
+
+if "ClosePrice" in listed_cleaned.columns and "OriginalListPrice" in listed_cleaned.columns:
+    listed_cleaned["price_ratio"] = (
+        listed_cleaned["ClosePrice"] /
+        listed_cleaned["OriginalListPrice"]
+    )
+
+if "ClosePrice" in listed_cleaned.columns and "LivingArea" in listed_cleaned.columns:
+    listed_cleaned["price_per_sqft"] = (
+        listed_cleaned["ClosePrice"] /
+        listed_cleaned["LivingArea"]
+    )
+
+if "ClosePrice" in listed_cleaned.columns and "OriginalListPrice" in listed_cleaned.columns:
+    listed_cleaned["close_to_original_list_ratio"] = (
+        listed_cleaned["ClosePrice"] /
+        listed_cleaned["OriginalListPrice"]
+    )
+
+if (
+    "PurchaseContractDate" in listed_cleaned.columns and
+    "ListingContractDate" in listed_cleaned.columns
+):
+    listed_cleaned["listing_to_contract_days"] = (
+        listed_cleaned["PurchaseContractDate"] -
+        listed_cleaned["ListingContractDate"]
+    ).dt.days
+
+if (
+    "CloseDate" in listed_cleaned.columns and
+    "PurchaseContractDate" in listed_cleaned.columns
+):
+    listed_cleaned["contract_to_close_days"] = (
+        listed_cleaned["CloseDate"] -
+        listed_cleaned["PurchaseContractDate"]
+    ).dt.days
+
+if "ListingContractDate" in listed_cleaned.columns:
+    listed_cleaned["year_month"] = (
+        listed_cleaned["ListingContractDate"]
+        .dt.to_period("M")
+    )
+
+print("\nWeek 6 metrics created")
+
+week6_columns = [
+    "price_ratio",
+    "price_per_sqft",
+    "close_to_original_list_ratio",
+    "listing_to_contract_days",
+    "contract_to_close_days"
+]
+
+existing_week6_columns = [
+    col for col in week6_columns
+    if col in listed_cleaned.columns
+]
+
+print("\nWeek 6 metric summary statistics:")
+print(
+    listed_cleaned[existing_week6_columns]
+    .describe()
+)
+
+
+# ============================================================
+# Week 6: Segment Analysis
+# ============================================================
+
+print("\n--- Week 6 Segment Analysis ---")
+
+segment_fields = [
+    "PropertyType",
+    "PropertySubType",
+    "CountyOrParish",
+    "MLSAreaMajor"
+]
+
+for segment in segment_fields:
+    if segment in listed_cleaned.columns:
+        print(f"\nSegment summary by {segment}:")
+
+        summary_metrics = {}
+
+        if "ListPrice" in listed_cleaned.columns:
+            summary_metrics["ListPrice"] = ["count", "mean", "median"]
+
+        if "DaysOnMarket" in listed_cleaned.columns:
+            summary_metrics["DaysOnMarket"] = ["mean", "median"]
+
+        if "LivingArea" in listed_cleaned.columns:
+            summary_metrics["LivingArea"] = ["mean", "median"]
+
+        if summary_metrics:
+            segment_summary = listed_cleaned.groupby(segment).agg(summary_metrics)
+
+            print(segment_summary.head(10))
+
+            output_file = f"listed_segment_summary_by_{segment}.csv"
+            segment_summary.to_csv(output_file)
+
+            print(f"Saved {output_file}")
+
+
+# ============================================================
 # Final Saved Outputs
 # ============================================================
 
@@ -333,6 +549,12 @@ listed_cleaned.to_csv(
     index=False
 )
 
+listed_cleaned.to_csv(
+    "listed_week6_metrics.csv",
+    index=False
+)
+
 print("\nSaved listed_combined_residential.csv")
 print("Saved listed_with_mortgage_rates.csv")
 print("Saved listed_cleaned.csv")
+print("Saved listed_week6_metrics.csv")
